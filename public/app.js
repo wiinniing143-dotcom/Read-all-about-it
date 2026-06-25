@@ -1,6 +1,18 @@
 // User ID (in real app, this would come from authentication)
 const userId = 'user_' + Math.random().toString(36).substr(2, 9);
 
+// Retailer information
+const retailers = {
+  amazon: { name: 'Amazon', commission: 5 },
+  bestbuy: { name: 'Best Buy', commission: 4 },
+  walmart: { name: 'Walmart', commission: 3.50 },
+  newegg: { name: 'Newegg', commission: 4.50 },
+  target: { name: 'Target', commission: 3 },
+  adorama: { name: 'Adorama', commission: 5 },
+  bhphotovideo: { name: 'B&H Photo Video', commission: 4 },
+  ebay: { name: 'eBay', commission: 2.50 }
+};
+
 // Show/Hide sections
 function showSection(sectionId) {
   // Hide all sections
@@ -45,14 +57,16 @@ async function loadReviews() {
     }
 
     reviews.forEach(review => {
+      const retailerName = retailers[review.retailer]?.name || 'Unknown Retailer';
       const card = document.createElement('div');
       card.className = 'review-card';
       card.innerHTML = `
+        <div class="retailer-badge">${retailerName}</div>
         <h3>${review.productName}</h3>
         <div class="rating">${'⭐'.repeat(review.rating)}</div>
         <p><strong>Review:</strong></p>
         <p>${review.aiReview || 'No review text available'}</p>
-        <a href="${review.productLink}" target="_blank" class="review-link" onclick="trackAffiliateClick('${review.affiliateLink}')">View Product</a>
+        <a href="${review.productLink}" target="_blank" class="review-link" onclick="trackAffiliateClick('${review.retailer}', '${review.productLink}')">View on ${retailerName}</a>
       `;
       reviewsList.appendChild(card);
     });
@@ -67,9 +81,10 @@ async function generateAIReview() {
   const productName = document.getElementById('productName').value;
   const productType = document.getElementById('productType').value;
   const rating = document.querySelector('input[name="rating"]:checked');
+  const retailer = document.getElementById('retailer').value;
 
-  if (!productName || !productType || !rating) {
-    alert('Please fill in Product Name, Type, and select a Rating');
+  if (!productName || !productType || !rating || !retailer) {
+    alert('Please fill in all fields');
     return;
   }
 
@@ -84,7 +99,8 @@ async function generateAIReview() {
       body: JSON.stringify({
         productName: productName,
         productType: productType,
-        rating: parseInt(rating.value)
+        rating: parseInt(rating.value),
+        retailer: retailers[retailer].name
       })
     });
 
@@ -111,6 +127,7 @@ document.getElementById('review-form')?.addEventListener('submit', async (e) => 
   const productName = document.getElementById('productName').value;
   const productLink = document.getElementById('productLink').value;
   const rating = document.querySelector('input[name="rating"]:checked').value;
+  const retailer = document.getElementById('retailer').value;
   const aiReview = document.getElementById('aiReviewPreview').value;
 
   try {
@@ -121,6 +138,7 @@ document.getElementById('review-form')?.addEventListener('submit', async (e) => 
         productName,
         productLink,
         rating: parseInt(rating),
+        retailer,
         userId,
         affiliateLink: productLink
       })
@@ -142,15 +160,17 @@ document.getElementById('review-form')?.addEventListener('submit', async (e) => 
 });
 
 // Track Affiliate Click
-async function trackAffiliateClick(affiliateLink) {
+async function trackAffiliateClick(retailer, affiliateLink) {
   try {
+    const commission = retailers[retailer]?.commission || 5;
     await fetch('/api/affiliate-click', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
+        retailer,
         productLink: affiliateLink,
-        commission: 5 // $5 per click
+        commission: commission
       })
     });
   } catch (error) {
@@ -168,6 +188,31 @@ async function loadUserEarnings() {
       document.getElementById('total-earnings').textContent = `$${user.totalEarnings.toFixed(2)}`;
       document.getElementById('affiliate-clicks').textContent = user.affiliateClicks;
 
+      // Retailer breakdown
+      const breakdownDiv = document.getElementById('retailer-breakdown');
+      breakdownDiv.innerHTML = '';
+
+      if (user.retailerStats && Object.keys(user.retailerStats).length > 0) {
+        const statsContainer = document.createElement('div');
+        statsContainer.className = 'retailer-breakdown';
+
+        Object.entries(user.retailerStats).forEach(([retailer, clicks]) => {
+          const statDiv = document.createElement('div');
+          statDiv.className = 'retailer-stat';
+          statDiv.innerHTML = `
+            <p><strong>${retailers[retailer]?.name || retailer}</strong></p>
+            <p class="count">${clicks}</p>
+            <p>clicks</p>
+          `;
+          statsContainer.appendChild(statDiv);
+        });
+
+        breakdownDiv.appendChild(statsContainer);
+      } else {
+        breakdownDiv.innerHTML = '<p style="text-align: center; color: #999;">No clicks yet</p>';
+      }
+
+      // Withdrawal history
       const historyDiv = document.getElementById('withdrawal-history');
       historyDiv.innerHTML = '<h3>Withdrawal History</h3>';
 
@@ -179,7 +224,7 @@ async function loadUserEarnings() {
           item.className = 'withdrawal-item';
           item.innerHTML = `
             <p><strong>Amount:</strong> $${withdrawal.amount.toFixed(2)}</p>
-            <p><strong>Status:</strong> ${withdrawal.status}</p>
+            <p><strong>Status:</strong> <span style="color: ${withdrawal.status === 'completed' ? '#48bb78' : '#f59e0b'}">${withdrawal.status.toUpperCase()}</span></p>
             <p><strong>Date:</strong> ${new Date(withdrawal.requestedDate).toLocaleDateString()}</p>
           `;
           historyDiv.appendChild(item);
@@ -234,5 +279,4 @@ async function requestWithdrawal() {
 // Initialize - load reviews on page load
 document.addEventListener('DOMContentLoaded', () => {
   loadReviews();
-  document.querySelector('.nav-btn').click(); // Activate first nav button
 });
